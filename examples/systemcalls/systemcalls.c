@@ -63,16 +63,16 @@ bool do_exec(int count, ...)
 	if (p == 0)
 	{
 		// Child
-		execv(command[0], &command[1]);
-		exit(1); // Never reached unless execv returns; which only happens when an error occurs. Child to exit with status 1
+		execv(command[0], command);
+		exit(255); // Never reached unless execv returns; which only happens when an error occurs. Child to exit with status 255
 	}
 
 	// Parent
 	int stat_loc = 0;
 	wait(&stat_loc);
     va_end(args);
-	if (stat_loc == 0)
-		return true; // Child process exited with zero
+	if (WIFEXITED(stat_loc) == true && WEXITSTATUS(stat_loc) == 0)
+		return true; // Child process exited normally and with status zero
 	else
     	return false; // Child process exited with non-zero
 }
@@ -107,15 +107,16 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 	if (p == 0)
 	{
 		// Child
-		int fd = open(outputfile, O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH); // rw- r-- r--
+		int fd = open(outputfile, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH); // rw- r-- r--
+		// We want to overwrite existing files, and create a new file if it doesn't exist
 		if (fd == -1)
+			exit(1); // Failed to open file
+		if (dup2(fd, 1) < 0)
 		{
-			// Failed to open file
-			return false;
+			close(fd);
+			exit(1); // Failed to replace stdout with outputfile in the child process
 		}
-		dup2(1, fd); // outputfile replaces stdout in the child process
-		close(fd);
-		execv(command[0], &command[1]);
+		execv(command[0], command);
 		exit(1); // Never reached unless execv returns; which only happens when an error occurs. Child to exit with status 1
 	}
 
@@ -123,7 +124,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 	int stat_loc = 0;
 	wait(&stat_loc);
     va_end(args);
-	if (stat_loc == 0)
+	if (WIFEXITED(stat_loc) == true && WEXITSTATUS(stat_loc) == 0)
 		return true; // Child process exited with zero
 	else
     	return false; // Child process exited with non-zero
