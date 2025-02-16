@@ -13,7 +13,8 @@ FINDER_APP_DIR=$(realpath $(dirname $0))
 FINDER_CONF_DIR=$(realpath $(dirname ${FINDER_APP_DIR}))/conf
 ARCH=arm64
 CROSS_COMPILE=aarch64-none-linux-gnu-
-SYSROOTFS=/home/user/arm-gnu-toolchain-14.2.rel1-aarch64-aarch64-none-linux-gnu #TODO
+SYSROOTFS="arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu"
+SYSROOTFS_LINK="https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/${SYSROOTFS}.tar.xz"
 
 if [ $# -lt 1 ]
 then
@@ -86,9 +87,13 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
+echo "Downloading toolchain"
+cd ${OUTDIR}
+wget ${SYSROOTFS_LINK}
+tar xf ${SYSROOTFS}.tar.xz
 cd "${OUTDIR}/rootfs"
-cp ${SYSROOTFS}/aarch64-none-linux-gnu/libc/lib/ld-linux-aarch64.so.1 lib
-cp ${SYSROOTFS}/aarch64-none-linux-gnu/libc/lib64/* lib64
+cp ${OUTDIR}/${SYSROOTFS}/aarch64-none-linux-gnu/libc/lib/ld-linux-aarch64.so.1 lib
+cp ${OUTDIR}/${SYSROOTFS}/aarch64-none-linux-gnu/libc/lib64/* lib64
 
 # TODO: Make device nodes
 sudo mknod -m 0666 dev/null c 1 3
