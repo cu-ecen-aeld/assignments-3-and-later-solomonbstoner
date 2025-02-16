@@ -11,12 +11,14 @@ bool do_system(const char *cmd)
 {
 
 /*
- * TODO  add your code here
+ * TODO:
  *  Call the system() function with the command set in the cmd
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
+	int ret = system(cmd);
+	if (ret == -1) return false; // child process could not be created
+	if (ret == 127) return false; // shell could not be executed in the child process
     return true;
 }
 
@@ -45,9 +47,6 @@ bool do_exec(int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
 /*
  * TODO:
@@ -59,9 +58,23 @@ bool do_exec(int count, ...)
  *
 */
 
-    va_end(args);
+	pid_t p = fork();
+	if (p == -1) return false;
+	if (p == 0)
+	{
+		// Child
+		execv(command[0], &command[1]);
+		exit(1); // Never reached unless execv returns; which only happens when an error occurs. Child to exit with status 1
+	}
 
-    return true;
+	// Parent
+	int stat_loc = 0;
+	wait(&stat_loc);
+    va_end(args);
+	if (stat_loc == 0)
+		return true; // Child process exited with zero
+	else
+    	return false; // Child process exited with non-zero
 }
 
 /**
@@ -80,10 +93,6 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
-
 
 /*
  * TODO
@@ -93,7 +102,29 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
-    va_end(args);
+	pid_t p = fork();
+	if (p == -1) return false;
+	if (p == 0)
+	{
+		// Child
+		int fd = open(outputfile, O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH); // rw- r-- r--
+		if (fd == -1)
+		{
+			// Failed to open file
+			return false;
+		}
+		dup2(1, fd); // outputfile replaces stdout in the child process
+		close(fd);
+		execv(command[0], &command[1]);
+		exit(1); // Never reached unless execv returns; which only happens when an error occurs. Child to exit with status 1
+	}
 
-    return true;
+	// Parent
+	int stat_loc = 0;
+	wait(&stat_loc);
+    va_end(args);
+	if (stat_loc == 0)
+		return true; // Child process exited with zero
+	else
+    	return false; // Child process exited with non-zero
 }
