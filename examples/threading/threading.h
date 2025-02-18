@@ -15,6 +15,20 @@ struct thread_data{
      * your thread implementation.
      */
 
+	/**
+	 * Integer values to indicate the number of milliseconds
+	 * that the thread should sleep for in the respective
+	 * situation.
+	 */
+	int wait_to_obtain_ms;
+	int wait_to_release_ms;
+
+	/**
+	 * Pointer to the mutex shared between all instances of
+	 * struct thread_data.
+	 */
+	pthread_mutex_t *mutex;
+
     /**
      * Set to true if the thread completed with success, false
      * if an error occurred.
