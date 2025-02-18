@@ -18,7 +18,7 @@ void* threadfunc(void* thread_param)
 	thread_func_args->thread_complete_success = false;
 	struct timespec ts;
 	ts.tv_sec = 0;
-	ts.tv_nsec = thread_func_args->wait_to_obtain_ms * 1000;
+	ts.tv_nsec = thread_func_args->wait_to_obtain_ms * 1000000;
 	nanosleep(&ts, NULL);
 
 	if (pthread_mutex_lock(thread_func_args->mutex) != 0)
@@ -27,7 +27,7 @@ void* threadfunc(void* thread_param)
 		return thread_param;
 	}
 
-	ts.tv_nsec = thread_func_args->wait_to_release_ms * 1000;
+	ts.tv_nsec = thread_func_args->wait_to_release_ms * 1000000;
 	nanosleep(&ts, NULL);
 	thread_func_args->thread_complete_success = true;
 
