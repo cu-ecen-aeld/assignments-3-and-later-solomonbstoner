@@ -8,7 +8,8 @@ set -u
 NUMFILES=10
 WRITESTR=AELD_IS_FUN
 WRITEDIR=/tmp/aeld-data
-username=$(cat conf/username.txt)
+FINDER_APP_CONF=/etc/finder-app/conf
+username=$(cat $FINDER_APP_CONF/username.txt)
 
 if [ $# -lt 3 ]
 then
@@ -32,7 +33,7 @@ echo "Writing ${NUMFILES} files containing string ${WRITESTR} to ${WRITEDIR}"
 rm -rf "${WRITEDIR}"
 
 # create $WRITEDIR if not assignment1
-assignment=`cat ../conf/assignment.txt`
+assignment=`cat $FINDER_APP_CONF/assignment.txt`
 
 if [ $assignment != 'assignment1' ]
 then
@@ -66,11 +67,11 @@ rm -rf /tmp/aeld-data
 set +e
 echo ${OUTPUTSTRING} | grep "${MATCHSTR}"
 if [ $? -eq 0 ]; then
-	echo "success"
+	echo ${OUTPUTSTRING} > /tmp/assignment4-result.txt
+	echo "success: Results are in /tmp/assignment4-result.txt"
 	exit 0
 else
 	echo "failed: expected  ${MATCHSTR} in ${OUTPUTSTRING} but instead found"
 	exit 1
 fi
 
-echo ${OUTPUTSTRING} > /tmp/assignment4-result.txt
