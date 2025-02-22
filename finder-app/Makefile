@@ -5,3 +5,5 @@ writer: writer.c
 
 clean: writer
 	rm $^
+
+all: writer
