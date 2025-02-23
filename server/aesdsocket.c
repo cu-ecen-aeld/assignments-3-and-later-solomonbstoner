@@ -15,12 +15,12 @@
 #define PORT_NUM "9000"
 #define FILE_NAME "/var/tmp/aesdsocketdata"
 
-volatile bool to_continue = true;
-
 void term_sig_handl (int signum)
 {
 	// keep as simple as possible as it has to be reentrant
-	to_continue = false;
+	unlink(FILE_NAME); // delete the file
+	syslog(LOG_USER | LOG_NOTICE, "Caught signal, exiting"); // TODO: is this signal safe?
+	exit(0);
 }
 
 int main (int argc, char **argv)
@@ -98,7 +98,7 @@ int main (int argc, char **argv)
 
 	// Continuously listen for conn until SIGINT / SIGTERM is received. Then log "Caught signal, exiting" and "Closed connection from X.X.X.X" when SIGINT / SIGTERM is received
 	int cfd = -1;
-	while (to_continue)
+	while (true)
 	{
 		int fd = open(FILE_NAME, O_APPEND | O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
 		if (fd == -1)
@@ -139,13 +139,5 @@ int main (int argc, char **argv)
 		cfd = -1;
 	}
 	
-	syslog(LOG_USER | LOG_NOTICE, "Caught signal, exiting");
 
-	if (cfd != -1) // Close open sockets
-	{
-		syslog(LOG_USER | LOG_INFO, "Closed connection from %s", inet_ntoa(inc_sock.sin_addr));
-		close(cfd);
-	}
-
-	unlink(FILE_NAME); // delete the file
 }
