@@ -35,6 +35,9 @@ int main (int argc, char **argv)
 
 	// Open a stream socket bound to port 9000. Return -1 if any connection steps fail
 	int sfd = socket(AF_INET, SOCK_STREAM, 0);
+	const int enable = 1;
+	setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)); // SO_REUSEADDR to get rid of bind error
+	// TODO: what if setsockopt fails?
 	if (sfd == -1)
 	{
 		syslog(LOG_USER | LOG_ERR, "Failure to initialize socket");
@@ -44,6 +47,7 @@ int main (int argc, char **argv)
 	ret = getaddrinfo("localhost", PORT_NUM, NULL, &skaddr_ptr);
 	if (ret != 0)
 	{
+		freeaddrinfo(skaddr_ptr);
 		syslog(LOG_USER | LOG_ERR, "Failure to getaddrinfo: %s", gai_strerror(ret));
 		exit(-1);
 	}
@@ -51,6 +55,7 @@ int main (int argc, char **argv)
 	ret = bind(sfd, skaddr_ptr->ai_addr, sizeof(struct sockaddr));
 	if (ret == -1)
 	{
+		freeaddrinfo(skaddr_ptr);
 		syslog(LOG_USER | LOG_ERR, "Failure to bind socket");
 		exit(-1);
 	}
@@ -58,6 +63,7 @@ int main (int argc, char **argv)
 	ret = listen(sfd, 1); // Mark socket as a listening socket
 	if (ret == -1)
 	{
+		freeaddrinfo(skaddr_ptr);
 		syslog(LOG_USER | LOG_ERR, "Failure to listen");
 		exit(-1);
 	}
@@ -103,6 +109,7 @@ int main (int argc, char **argv)
 		int fd = open(FILE_NAME, O_APPEND | O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
 		if (fd == -1)
 		{
+			freeaddrinfo(skaddr_ptr);
 			syslog(LOG_USER | LOG_ERR, "Failure to open file %s. Error: %s", FILE_NAME, strerror(errno));
 			exit(1);
 		}
