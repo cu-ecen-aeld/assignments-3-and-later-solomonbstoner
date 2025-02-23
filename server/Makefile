@@ -10,4 +10,4 @@ default: aesdsocket
 all: default
 
 clean:
-	rm aesdsocket
+	rm -f aesdsocket
