@@ -4,23 +4,34 @@
 #include <syslog.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <netdb.h>
+#include <signal.h>
+#include <errno.h>
+#include <string.h>
 
 #define PORT_NUM "9000"
+#define FILE_NAME "/var/tmp/aesdsocketdata"
 
 volatile bool to_continue = true;
 
 void term_sig_handl (int signum)
 {
 	// keep as simple as possible as it has to be reentrant
+	to_continue = false;
 }
 
-int main ()
+int main (int argc, char **argv)
 {
 	struct addrinfo *skaddr_ptr; // initialized by getaddrinfo
-	struct addrinfo inc_sock; // information of incoming connecting socket
+	struct sockaddr_in inc_sock; // information of incoming connecting socket
 
 	int ret = 0; // placeholder for function return values
 	openlog("aesdsocket", LOG_PID, LOG_USER); // Initialize syslog
+	signal(SIGTERM, term_sig_handl);
+	signal(SIGINT, term_sig_handl);
 
 	// Open a stream socket bound to port 9000. Return -1 if any connection steps fail
 	int sfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -53,15 +64,18 @@ int main ()
 
 	// Fork as a daemon when the '-d' argument is given
 	bool is_daemon = false;
-	while ((c = getopt(argc, argv, "d::")) != -1)
-	{
-		switch (c)
-		{
-		case 'd':
-			is_daemon = true;
-			break;
-		default:
-	}
+	char c;
+ 	while ((c = getopt(argc, argv, "d::")) != (char) -1) // infinite loop if no char cast is there
+ 	{
+ 		switch (c)
+ 		{
+ 		case 'd':
+ 			is_daemon = true;
+ 			break;
+ 		default:
+ 			break;
+ 		}
+ 	}
 
 	if (is_daemon)
 	{
@@ -80,25 +94,58 @@ int main ()
 		// Child process continues to the while loop
 	}
 
+	syslog(LOG_USER | LOG_INFO, "Setup successful");
+
 	// Continuously listen for conn until SIGINT / SIGTERM is received. Then log "Caught signal, exiting" and "Closed connection from X.X.X.X" when SIGINT / SIGTERM is received
+	int cfd = -1;
 	while (to_continue)
 	{
-		int cfd = accept(sfd, inc_sock, sizeof(struct sockaddr));
-		if (cfd == -1)
+		int fd = open(FILE_NAME, O_APPEND | O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+		if (fd == -1)
+		{
+			syslog(LOG_USER | LOG_ERR, "Failure to open file %s. Error: %s", FILE_NAME, strerror(errno));
+			exit(1);
+		}
+		socklen_t inc_sock_size = sizeof(struct sockaddr);
+		cfd = accept(sfd, (struct sockaddr *)&inc_sock, &inc_sock_size);
+		if (cfd < 0)
 		{
 			// Error connecting
+			syslog(LOG_USER | LOG_ERR, "Failure to accept connection: %s", strerror(errno));
+			close(fd);
+			continue;
 		}
 		// TODO: New thread for each connection?
-		syslog(LOG_USER | LOG_INFO, "Accepted connection from %s", inet_ntoa(inc_sock->sin_addr)); // Logs msg to syslog "Accepted connection from x.x.x.x"
+		syslog(LOG_USER | LOG_INFO, "Accepted connection from %s", inet_ntoa(inc_sock.sin_addr));
 		
 
 		// Receive data from the conn, and append it to file `/var/tmp/aesdsocketdata`. Discard over-length packets (ie if malloc fails)
+		while (recv(cfd, &c, 1, 0) == 1)
+		{
+			write(fd, &c, 1); // TODO: Handle failure to write?
+			if (c == '\n')
+				break; // end of packet received
+		}
 
 		// Return the FULL content of `/var/tmp/aesdsocketdata` to the client as soon as a new packet is received (delimited by '\n')
-
+		lseek(fd, SEEK_SET, 0); // start at the front of the file
+		while(read(fd, &c, 1) == 1)
+		{
+			send(cfd, &c, 1, 0);
+		}
+		syslog(LOG_USER | LOG_INFO, "Closed connection from %s", inet_ntoa(inc_sock.sin_addr));
+		close(fd);
+		close(cfd);
+		cfd = -1;
 	}
-
+	
 	syslog(LOG_USER | LOG_NOTICE, "Caught signal, exiting");
 
-	// Close open sockets
+	if (cfd != -1) // Close open sockets
+	{
+		syslog(LOG_USER | LOG_INFO, "Closed connection from %s", inet_ntoa(inc_sock.sin_addr));
+		close(cfd);
+	}
+
+	unlink(FILE_NAME); // delete the file
 }
