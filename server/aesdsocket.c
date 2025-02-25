@@ -44,7 +44,7 @@ int main (int argc, char **argv)
 		exit(-1);
 	}
 
-	ret = getaddrinfo("localhost", PORT_NUM, NULL, &skaddr_ptr);
+	ret = getaddrinfo("0.0.0.0", PORT_NUM, NULL, &skaddr_ptr);
 	if (ret != 0)
 	{
 		freeaddrinfo(skaddr_ptr);
