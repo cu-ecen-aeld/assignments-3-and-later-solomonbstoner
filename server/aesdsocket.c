@@ -90,22 +90,6 @@ int main (int argc, char **argv)
 	struct sockaddr_in inc_sock; // information of incoming connecting socket
 	struct addrinfo *skaddr_ptr; // initialized by getaddrinfo
 
-	struct sigevent sev;
-	struct itimerspec its;
-	timer_t timerid;
-
-	memset(&sev, 0, sizeof(struct sigevent)); // valgrind error about uninitialized sev
-	sev.sigev_notify = SIGEV_THREAD;
-	sev.sigev_notify_function = add_timestamp;
-
-	its.it_value.tv_sec = 10;
-	its.it_value.tv_nsec = 0;
-	its.it_interval.tv_sec = 10; // repeat interval
-	its.it_interval.tv_nsec = 0;
-	timer_create(CLOCK_REALTIME, &sev, &timerid);
-	// TODO: Handle timer_create error
-	timer_settime(timerid, 0, &its, NULL);
-	// TODO: Handle timer error
 
 	int ret = 0; // placeholder for function return values
 	openlog("aesdsocket", LOG_PID, LOG_USER); // Initialize syslog
@@ -180,6 +164,29 @@ int main (int argc, char **argv)
 		}
 		// Child process continues to the while loop
 	}
+
+	// Initialize the timer after fork
+	struct sigevent sev;
+	struct itimerspec its;
+	timer_t timerid;
+
+	memset(&sev, 0, sizeof(struct sigevent)); // valgrind error about uninitialized sev
+	sev.sigev_notify = SIGEV_THREAD;
+	sev.sigev_notify_function = add_timestamp;
+
+	its.it_value.tv_sec = 10;
+	its.it_value.tv_nsec = 0;
+	its.it_interval.tv_sec = 10; // repeat interval
+	its.it_interval.tv_nsec = 0;
+	if (timer_create(CLOCK_REALTIME, &sev, &timerid) != 0)
+	{
+		syslog(LOG_USER | LOG_ERR, "Failure to create timer: %s", strerror(errno));
+	}
+	if (timer_settime(timerid, 0, &its, NULL) != 0)
+	{
+		syslog(LOG_USER | LOG_ERR, "Failure to set timer: %s", strerror(errno));
+	}
+
 	fd = open(FILE_NAME, O_APPEND | O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
 	pthread_mutex_init(&fd_m, NULL);
 	if (fd == -1)
@@ -263,17 +270,23 @@ void *thread_func (void *arg)
 	struct node *n = (struct node *) arg; // to shut the compiler up about incompatible arg type
 	// n: addr to the linked list node corresponding to this thread
 	pthread_mutex_lock(&n->ll_m); // Lock node mutex
-	char c;
 	// Receive data from the conn, and append it to file `/var/tmp/aesdsocketdata`. Discard over-length packets (ie if malloc fails)
 
-	pthread_mutex_lock(&fd_m);
-	while (recv(n->sock_fd, &c, 1, 0) == 1)
+	char *buf = (char *)malloc(200); // arbitrary 200 byte buffer
+	memset(buf, 0, 200);
+	size_t len = 0;
+	char c;
+	while (recv(n->sock_fd, &c, 1, 0) == 1 && len < 200)
 	{
-		write(fd, &c, 1); // ignore failure to write
+		*(buf+len) = c; // copy to buffer
+		len++;
 		if (c == '\n')
 			break; // end of packet received
 	}
+	pthread_mutex_lock(&fd_m);
+	write(fd, buf, strlen(buf)); // ignore failure to write
 	pthread_mutex_unlock(&fd_m);
+	free(buf);
 
 	pthread_mutex_lock(&fd_m);
 	lseek(fd, SEEK_SET, 0); // start at the front of the file
