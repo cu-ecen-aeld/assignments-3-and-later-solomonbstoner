@@ -13,6 +13,7 @@
 #include <string.h>
 #include <sys/queue.h> // For the linked list
 #include <pthread.h>
+#include <time.h>
 
 #define PORT_NUM "9000"
 #define FILE_NAME "/var/tmp/aesdsocketdata"
@@ -45,6 +46,22 @@ void *thread_func (void *); // declaration of the func that the thread will run
 
 bool is_terminated = false; // variable for main loop
 
+static void add_timestamp (union sigval sv)
+{
+	time_t t;
+	struct tm *tmp;
+	char buf[100];
+
+	t = time(NULL);
+	tmp = localtime(&t);
+	strftime(buf, 100, "%a, %d %b %Y %T %z", tmp);
+	pthread_mutex_lock(&fd_m);
+	write(fd, "timestamp:", 10);
+	write(fd, buf, strlen(buf));
+	write(fd, "\n", 1);
+	pthread_mutex_unlock(&fd_m);
+}
+
 // Func registered to run when pthread_cancel is called, and when the thread terminates
 static void thread_cleanup (void *arg)
 {
@@ -72,6 +89,24 @@ int main (int argc, char **argv)
 {
 	struct sockaddr_in inc_sock; // information of incoming connecting socket
 	struct addrinfo *skaddr_ptr; // initialized by getaddrinfo
+
+	struct sigevent sev;
+	struct itimerspec its;
+	timer_t timerid;
+
+	memset(&sev, 0, sizeof(struct sigevent)); // valgrind error about uninitialized sev
+	sev.sigev_notify = SIGEV_THREAD;
+	sev.sigev_notify_function = add_timestamp;
+
+	its.it_value.tv_sec = 10;
+	its.it_value.tv_nsec = 0;
+	its.it_interval.tv_sec = 10; // repeat interval
+	its.it_interval.tv_nsec = 0;
+	timer_create(CLOCK_REALTIME, &sev, &timerid);
+	// TODO: Handle timer_create error
+	timer_settime(timerid, 0, &its, NULL);
+	// TODO: Handle timer error
+
 	int ret = 0; // placeholder for function return values
 	openlog("aesdsocket", LOG_PID, LOG_USER); // Initialize syslog
 	signal(SIGTERM, term_sig_handl);
@@ -204,6 +239,8 @@ int main (int argc, char **argv)
 			SLIST_INSERT_AFTER(n_tmp_prev, n_new, next); // Not first entry
 		pthread_mutex_unlock(&n_new->ll_m); // unlock mutex for the new thread to do its work
 	}
+	if (timer_delete(timerid) != 0) // delete the timer
+		syslog(LOG_USER | LOG_ERR, "Error deleting timer: %s", strerror(errno));
 	syslog(LOG_USER | LOG_NOTICE, "Caught signal, exiting");
 	struct node *n = NULL;
 	struct node *n_2 = NULL;
@@ -218,7 +255,6 @@ int main (int argc, char **argv)
 		free(n); // free node
 	}
 	freeaddrinfo(skaddr_ptr);
-
 }
 
 void *thread_func (void *arg) 
