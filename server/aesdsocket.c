@@ -17,6 +17,12 @@
 #define PORT_NUM "9000"
 #define FILE_NAME "/var/tmp/aesdsocketdata"
 
+// copied SLIST_FOREACH_SAFE from BSD because I need it to remove elements. Glibc does not have this macro
+#define	SLIST_FOREACH_SAFE(var, head, field, tvar)			\
+	for ((var) = SLIST_FIRST((head));				\
+	    (var) && ((tvar) = SLIST_NEXT((var), field), 1);		\
+	    (var) = (tvar))
+
 // struct that contains the pthread_t info, socket id, mutex, bool to indicate if the thread is complete, and pointer to itself. This is the node of the linked list
 struct node
 {
@@ -31,26 +37,41 @@ struct node
 SLIST_HEAD(slisthead, node); // head of the singly linked list
 struct slisthead head;
 
+int sfd; // server socket. global for signal handler to close
 int fd;
 pthread_mutex_t fd_m; // mutex for FILE_NAME fd
 
 void *thread_func (void *); // declaration of the func that the thread will run
 
+bool is_terminated = false; // variable for main loop
+
+// Func registered to run when pthread_cancel is called, and when the thread terminates
+static void thread_cleanup (void *arg)
+{
+	struct node *n = (struct node *) arg; // to shut the compiler up about incompatible arg type
+	close(n->sock_fd);
+	n->is_completed = true;
+	n->sock_fd = -1;
+	pthread_mutex_unlock(&n->ll_m);
+}
+
 void term_sig_handl (int signum)
 {
-	// keep as simple as possible as it has to be reentrant
-	unlink(FILE_NAME); // delete the file
-	syslog(LOG_USER | LOG_NOTICE, "Caught signal, exiting"); // TODO: is this signal safe?
-	exit(0); // Let the OS clean up everything for us
-	// TODO: "after requesting an exit from each thread and waiting for threads to complete execution."
-	// TODO: something about pthread_kill
+	// Is this handler reentrant? Is it signal safe?
+	close(fd); // close FILE_NAME. signal safe
+	close(sfd); // close the server socket to unblock `accept` in `main`. signal safe
+	unlink(FILE_NAME); // delete the file. signal safe
+	struct node *n_tmp = NULL;
+	struct node *n_tmp_2 = NULL; // n_tmp_2 is purely for SLIST_FOREACH_SAFE
+	SLIST_FOREACH_SAFE(n_tmp, &head, next, n_tmp_2) // to close the fds of all threads
+		close(n_tmp->sock_fd); // to make all recv unblock with error. signal safe
+	is_terminated = true; // terminate main while loop
 }
 
 int main (int argc, char **argv)
 {
-	struct addrinfo *skaddr_ptr; // initialized by getaddrinfo
 	struct sockaddr_in inc_sock; // information of incoming connecting socket
-
+	struct addrinfo *skaddr_ptr; // initialized by getaddrinfo
 	int ret = 0; // placeholder for function return values
 	openlog("aesdsocket", LOG_PID, LOG_USER); // Initialize syslog
 	signal(SIGTERM, term_sig_handl);
@@ -59,7 +80,7 @@ int main (int argc, char **argv)
 	SLIST_INIT(&head); // Initialize the head of the linked list
 
 	// Open a stream socket bound to port 9000. Return -1 if any connection steps fail
-	int sfd = socket(AF_INET, SOCK_STREAM, 0);
+	sfd = socket(AF_INET, SOCK_STREAM, 0);
 	const int enable = 1;
 	setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)); // SO_REUSEADDR to get rid of bind error
 	// TODO: what if setsockopt fails?
@@ -137,7 +158,7 @@ int main (int argc, char **argv)
 
 	// Continuously listen for conn until SIGINT / SIGTERM is received. Then log "Caught signal, exiting" and "Closed connection from X.X.X.X" when SIGINT / SIGTERM is received
 	int cfd = -1;
-	while (true)
+	while (is_terminated == false)
 	{
 		socklen_t inc_sock_size = sizeof(struct sockaddr);
 		cfd = accept(sfd, (struct sockaddr *)&inc_sock, &inc_sock_size);
@@ -149,19 +170,23 @@ int main (int argc, char **argv)
 		}
 
 		struct node *n_new = (struct node *) malloc(sizeof(struct node)); // malloc a new struct to append to the end of the linked list
+		n_new->is_completed = false;
+		// TODO: What happens if malloc fails?
 		pthread_mutex_init(&n_new->ll_m, NULL); // init the mutex with default attr
 		pthread_mutex_lock(&n_new->ll_m); // mutex will be unlocked after the node is appended to the linked list
 		n_new->sock_fd = cfd;
 		inet_ntop(AF_INET, &(inc_sock.sin_addr), n_new->ip_a, INET_ADDRSTRLEN);
 		syslog(LOG_USER | LOG_INFO, "Accepted connection from %s", inet_ntoa(inc_sock.sin_addr));
 		struct node *n_tmp = NULL;
-		// TODO: What happens if malloc fails?
-		SLIST_FOREACH(n_tmp, &head, next) // Iterate through the struct and pthread_join all completed threads
+		struct node *n_tmp_2 = NULL; // n_tmp_2 is a placeholder for SLIST_FOREACH_SAFE
+		struct node *n_tmp_prev = NULL; // to keep track of where to insert n_new
+		SLIST_FOREACH_SAFE(n_tmp, &head, next, n_tmp_2) // Iterate through the struct and pthread_join all completed threads
 		{
 			pthread_mutex_lock(&n_tmp->ll_m);
 			if (n_tmp->is_completed == false)
 			{
 				pthread_mutex_unlock(&n_tmp->ll_m); // nothing to do. unlock mutex and move on
+				n_tmp_prev = n_tmp; // keep track of the tail-most remaining node
 				continue;
 			}
 			pthread_join(n_tmp->t_id, NULL); // join thread
@@ -171,19 +196,34 @@ int main (int argc, char **argv)
 			pthread_mutex_destroy(&n_tmp->ll_m); // destroying a locked mutex results in undefined behavior
 			free(n_tmp); // free node
 		}
-		// After the loop ends, n_tmp should point to the end of the list
+		// After the loop ends, n_tmp_prev should point to the end of the list
 		pthread_create(&n_new->t_id, NULL, thread_func, (void *) n_new); // New default thread for the new connection
-		if (n_tmp == NULL)
+		if (SLIST_EMPTY(&head))
 			SLIST_INSERT_HEAD(&head, n_new, next); // First entry
 		else
-			SLIST_INSERT_AFTER(n_tmp, n_new, next); // Not first entry
+			SLIST_INSERT_AFTER(n_tmp_prev, n_new, next); // Not first entry
 		pthread_mutex_unlock(&n_new->ll_m); // unlock mutex for the new thread to do its work
 	}
-	close(fd); // close the file
+	syslog(LOG_USER | LOG_NOTICE, "Caught signal, exiting");
+	struct node *n = NULL;
+	struct node *n_2 = NULL;
+	SLIST_FOREACH_SAFE(n, &head, next, n_2) // Iterate through the struct and pthread_join all completed threads
+	{
+		pthread_cancel(n->t_id);
+		pthread_join(n->t_id, NULL); // join thread
+		// TODO: what if pthread_join fails?
+		SLIST_REMOVE(&head, n, node, next); // remove node n_tmp
+		pthread_mutex_unlock(&n->ll_m);
+		pthread_mutex_destroy(&n->ll_m); // destroying a locked mutex results in undefined behavior
+		free(n); // free node
+	}
+	freeaddrinfo(skaddr_ptr);
+
 }
 
 void *thread_func (void *arg) 
 {
+	pthread_cleanup_push(thread_cleanup, arg);
 	struct node *n = (struct node *) arg; // to shut the compiler up about incompatible arg type
 	// n: addr to the linked list node corresponding to this thread
 	pthread_mutex_lock(&n->ll_m); // Lock node mutex
@@ -210,9 +250,6 @@ void *thread_func (void *arg)
 
 	syslog(LOG_USER | LOG_INFO, "Closed connection from %s", n->ip_a);
 
-	close(n->sock_fd);
-	n->is_completed = true;
-	n->sock_fd = -1;
-	pthread_mutex_unlock(&n->ll_m);
+	pthread_cleanup_pop(1); // pop and execute thread_cleanup
 	return NULL; // to shut the compiler up about void*
 }
