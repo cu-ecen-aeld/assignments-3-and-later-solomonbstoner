@@ -29,10 +29,22 @@
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
-    /**
-    * TODO: implement per description
-    */
-    return NULL;
+	struct aesd_buffer_entry *ret_val = NULL;
+	for (uint8_t i = 0; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++) // make a full round from out_offs
+	{
+		uint8_t offs = (buffer->out_offs + i) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+		size_t str_len = buffer->entry[offs].size;
+		if (char_offset < str_len) // size_t is unsigned. No negative numbers allowed
+		{
+			// JACKPOT
+			*entry_offset_byte_rtn = char_offset;
+			ret_val = &(buffer->entry[offs]);
+			break;
+		}
+		else
+			char_offset -= str_len;
+	}
+    return ret_val;
 }
 
 /**
@@ -44,9 +56,18 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 */
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
-    /**
-    * TODO: implement per description
-    */
+	memcpy(&(buffer->entry[buffer->in_offs]), add_entry, sizeof(struct aesd_buffer_entry)); // Add entry regardless of whether its full
+	//buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
+	//buffer->entry[buffer->in_offs].size = add_entry->size;
+	(buffer->in_offs)++;
+	buffer->in_offs %= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; // circle around
+	if (buffer -> full)
+	{
+		(buffer->out_offs)++; // Update the read ptr if its full
+		buffer->out_offs %= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; // circle around
+	}
+	else if (buffer->in_offs == buffer->out_offs)
+		buffer->full = true; // buffer is full if write and read offsets are the same
 }
 
 /**
