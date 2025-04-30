@@ -1,9 +1,10 @@
 CC ?= $(CROSS_COMPILE)gcc # Allow overrides from Yocto
-CFLAG ?= -Wall -Werror # Allow overrides from Yocto
+CFLAGS ?= -Wall -Werror # Allow overrides from Yocto
+LDFLAGS ?= 
 
 .PHONY: clean
 aesdsocket: aesdsocket.c
-	$(CC) $(CFLAG) $^ -o $@
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 default: aesdsocket
 
