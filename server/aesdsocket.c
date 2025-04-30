@@ -49,6 +49,7 @@ bool is_terminated = false; // variable for main loop
 static void add_timestamp (union sigval sv)
 {
 	time_t t;
+	ssize_t write_ret_val;
 	struct tm *tmp;
 	char buf[100];
 
@@ -56,9 +57,10 @@ static void add_timestamp (union sigval sv)
 	tmp = localtime(&t);
 	strftime(buf, 100, "%a, %d %b %Y %T %z", tmp);
 	pthread_mutex_lock(&fd_m);
-	write(fd, "timestamp:", 10);
-	write(fd, buf, strlen(buf));
-	write(fd, "\n", 1);
+	write_ret_val = write(fd, "timestamp:", 10);
+	write_ret_val = write(fd, buf, strlen(buf));
+	write_ret_val = write(fd, "\n", 1);
+	(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
 	pthread_mutex_unlock(&fd_m);
 }
 
@@ -284,7 +286,8 @@ void *thread_func (void *arg)
 			break; // end of packet received
 	}
 	pthread_mutex_lock(&fd_m);
-	write(fd, buf, strlen(buf)); // ignore failure to write
+	ssize_t write_ret_val = write(fd, buf, strlen(buf)); // ignore failure to write
+	(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
 	pthread_mutex_unlock(&fd_m);
 	free(buf);
 
