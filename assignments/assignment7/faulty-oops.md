@@ -1,3 +1,5 @@
+This is the kernel oops message after running `echo “hello_world” > /dev/faulty`.
+
 ```
 faulty: unknown parameter 'faulty' ignored
 Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000
@@ -44,3 +46,40 @@ Code: d2800001 d2800000 d503233f d50323bf (b900003f)
 ---[ end trace 0000000000000000 ]---
 #
 ```
+
+The call trace tells us that the fault lies in the instruction at address `0x10` starting from the `faulty_write` function.
+```
+ faulty_write+0x10/0x20 [faulty]
+```
+
+I could not use the `objdump` that came with my host because it does not support ARM.
+```
+$ objdump -m arm -S ldd-5c3cae6ddc96b8645dfa6f6bc4ddbba08aae8789/misc-modules/faulty.ko
+
+ldd-5c3cae6ddc96b8645dfa6f6bc4ddbba08aae8789/misc-modules/faulty.ko:     file format elf64-little
+
+objdump: can't use supplied machine arm
+objdump: can't disassemble for architecture UNKNOWN!
+```
+
+I inspected the `faulty.ko` in the buildroot output directory. I used the buildroot toolchain's `objdump` to disassemble. There, I found the instruction responsible for the oops message: `str     wzr, [x1]`. It tried to write to a null pointer.
+```
+$ cd assignment-5-solomonbstoner/buildroot/output/build
+$ ./host-binutils-2.40/binutils/objdump -S ldd-5c3cae6ddc96b8645dfa6f6bc4ddbba08aae8789/misc-modules/faulty.ko  | less
+...
+Disassembly of section .text:
+
+0000000000000000 <faulty_write>:
+   0:   d2800001        mov     x1, #0x0                        // #0
+   4:   d2800000        mov     x0, #0x0                        // #0
+   8:   d503233f        paciasp
+   c:   d50323bf        autiasp
+  10:   b900003f        str     wzr, [x1]
+  14:   d65f03c0        ret
+  18:   d503201f        nop
+  1c:   d503201f        nop
+
+0000000000000020 <faulty_init>:
+```
+
+
