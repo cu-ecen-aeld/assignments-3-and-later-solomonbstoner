@@ -21,26 +21,22 @@
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-MODULE_AUTHOR("Your Name Here"); /** TODO: fill in your name **/
+MODULE_AUTHOR("Solomon T");
 MODULE_LICENSE("Dual BSD/GPL");
 
-struct aesd_dev aesd_device;
+struct aesd_dev aesd_device; // TODO: Qn: why is this global?
 
 int aesd_open(struct inode *inode, struct file *filp)
 {
     PDEBUG("open");
-    /**
-     * TODO: handle open
-     */
+	filp->private_data = &aesd_device; // save device struct in private_data of filp
     return 0;
 }
 
 int aesd_release(struct inode *inode, struct file *filp)
 {
     PDEBUG("release");
-    /**
-     * TODO: handle release
-     */
+	filp->private_data = NULL;
     return 0;
 }
 
@@ -49,9 +45,14 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 {
     ssize_t retval = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-    /**
-     * TODO: handle read
-     */
+	// TODO : lock aesd_dev
+	struct aesd_dev *ad = (struct aesd_dev *)filp->private_data;
+	struct aesd_circular_buffer *cbuf = ad->cbuf;
+	// TODO : kmalloc count bytes
+	// TODO : find starting entry based on f_pos. Iterate through and copy all strings to the kmalloced buffer
+	// TODO : return data from circular buffer using copy_to_user
+	// TODO : set retval based on the number of chars read
+	// TODO : unlock aesd_dev
     return retval;
 }
 
@@ -60,9 +61,16 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 {
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    /**
-     * TODO: handle write
-     */
+	// We wil ignore f_pos
+	// TODO : lock aesd_dev
+	struct aesd_dev *ad = (struct aesd_dev *)filp->private_data;
+	struct aesd_circular_buffer *cbuf = ad->cbuf;
+	// TODO : kmalloc count bytes (or count + prev_count if a temp buf is occupied). kbuf = kzalloc()
+	// TODO : copy data from user using copy_from_user
+	bool is_term = (kbuf[count-1] == '\n');
+	// TODO : if buf ends with '\n' add entry using aesd_circular_buffer_add_entry
+	// TODO : else hold it in a temp buf
+	// TODO : unlock aesd_dev
     return retval;
 }
 struct file_operations aesd_fops = {
@@ -80,7 +88,7 @@ static int aesd_setup_cdev(struct aesd_dev *dev)
     cdev_init(&dev->cdev, &aesd_fops);
     dev->cdev.owner = THIS_MODULE;
     dev->cdev.ops = &aesd_fops;
-    err = cdev_add (&dev->cdev, devno, 1);
+    err = cdev_add (&dev->cdev, devno, 1); // After this call, the aesd dev should be ready to handle all ops from the kernel
     if (err) {
         printk(KERN_ERR "Error %d adding aesd cdev", err);
     }
@@ -101,10 +109,12 @@ int aesd_init_module(void)
         return result;
     }
     memset(&aesd_device,0,sizeof(struct aesd_dev));
-
-    /**
-     * TODO: initialize the AESD specific portion of the device
-     */
+	// TODO: init aesddev lock
+	aesd_device.cbuf.entry = NULL;
+	aesd_device.cbuf.full = false;
+	aesd_device.cbuf.in_offs = 0;
+	aesd_device.cbuf.out_offs = 0;
+	aesd_device.cdev = dev;
 
     result = aesd_setup_cdev(&aesd_device);
 
@@ -121,10 +131,9 @@ void aesd_cleanup_module(void)
 
     cdev_del(&aesd_device.cdev);
 
-    /**
-     * TODO: cleanup AESD specific poritions here as necessary
-     */
-
+	// TODO: lock aesddev
+	// TODO: iterate through the circular buffer and free all kmalloced  memory
+	// TODO: unlock and destroy aesddev lock
     unregister_chrdev_region(devno, 1);
 }
 

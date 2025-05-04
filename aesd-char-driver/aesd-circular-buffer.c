@@ -56,6 +56,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 */
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
+    // TODO: Handle memory leak of replacing existing entry if buffer->full == true
 	memcpy(&(buffer->entry[buffer->in_offs]), add_entry, sizeof(struct aesd_buffer_entry)); // Add entry regardless of whether its full
 	//buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
 	//buffer->entry[buffer->in_offs].size = add_entry->size;
