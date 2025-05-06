@@ -27,7 +27,7 @@
 
 struct aesd_dev
 {
-    // TODO: add lock
+    struct semaphore lock; // Add lock
 	struct aesd_buffer_entry tmp_buf; /* Temporary buffer for unterminated writes ie no '\n' */
 	struct aesd_circular_buffer cbuf; /* The circular buffer itself */
     struct cdev cdev;     /* Char device structure      */
