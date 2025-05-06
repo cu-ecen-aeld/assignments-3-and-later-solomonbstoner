@@ -100,6 +100,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		memcpy(ret_str+i, ent->buffptr, n_b_to_cpy);
 		i += n_b_to_cpy;
 	}
+    PDEBUG("read: returning string: %s" , ret_str);
 	if (copy_to_user(buf, ret_str, count) != 0) // Return data from circular buffer using copy_to_user
 	{
 		// Error copying
