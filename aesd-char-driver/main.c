@@ -135,7 +135,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	}
 	if (tmp_kbuf->size > 0 && tmp_kbuf->buffptr != NULL)
 	{
-		memcpy(kbuf, tmp_kbuf->buffptr, tmp_kbuf->size); // Copy the existing string to the new buffer
+		strcpy(kbuf, tmp_kbuf->buffptr); // Copy the existing string to the new buffer
 		kfree(tmp_kbuf->buffptr); // We dont need the existing string buffer anymore
 	}
 	if (copy_from_user(kbuf + tmp_kbuf->size, buf, count) != 0)
@@ -144,15 +144,17 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 		retval = -EFAULT;
 		goto free_kbuf;
 	}
-    PDEBUG("write: string is now: %s", kbuf);
+    PDEBUG("write: kbuf = %s", kbuf);
 	retval = count; // We successfully wrote count number of bytes
 	tmp_kbuf->buffptr = kbuf;
 	tmp_kbuf->size += count;
+    PDEBUG("write: tmp_kbuf->size = %ld, tmp_kbuf->buffptr =  %s", tmp_kbuf->size, kbuf);
 	bool is_term = (kbuf[count-1] == '\n');
 	if (is_term)
 	{
 		// If kbuf ends with '\n' add entry using aesd_circular_buffer_add_entry
 		aesd_circular_buffer_add_entry(&aesd_device.cbuf, tmp_kbuf);
+		PDEBUG("write: ADDED TO CIRC BUF: tmp_kbuf->size = %ld, tmp_kbuf->buffptr =  %s", tmp_kbuf->size, kbuf);
 		memset(tmp_kbuf, 0, sizeof(struct aesd_buffer_entry)); // Clear memory after it has been copied over
 		goto out; // No need to clear kbuf
 	}
