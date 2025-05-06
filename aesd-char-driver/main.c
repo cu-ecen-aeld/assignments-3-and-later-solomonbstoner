@@ -92,8 +92,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		ent = aesd_circular_buffer_find_entry_offset_for_fpos(cbuf, *(f_pos)+i, &j);
 		if (ent == NULL)
 		{
-            // Nothing else to copy.
-			goto out;
+            // Nothing else to copy. Copy what we have to userland
+			break;
 		}
 		n = ent->size;
 		n_b_to_cpy = (count - i) > n ? n : (count - i); // Copy partial if (count - i) < total length of this entry's string
