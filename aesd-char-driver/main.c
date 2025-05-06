@@ -149,7 +149,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	tmp_kbuf->buffptr = kbuf;
 	tmp_kbuf->size += count;
     PDEBUG("write: tmp_kbuf->size = %ld, tmp_kbuf->buffptr =  %s", tmp_kbuf->size, kbuf);
-	bool is_term = (kbuf[count-1] == '\n');
+	bool is_term = (tmp_kbuf->buffptr[tmp_kbuf->size-1] == '\n');
 	if (is_term)
 	{
 		// If kbuf ends with '\n' add entry using aesd_circular_buffer_add_entry
