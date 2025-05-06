@@ -99,6 +99,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		n_b_to_cpy = (count - i) > n ? n : (count - i); // Copy partial if (count - i) < total length of this entry's string
 		memcpy(ret_str+i, ent->buffptr, n_b_to_cpy);
 		i += n_b_to_cpy;
+		retval = i; // Update the number of characters read
 	}
     PDEBUG("read: returning string: %s" , ret_str);
 	if (copy_to_user(buf, ret_str, count) != 0) // Return data from circular buffer using copy_to_user
@@ -107,7 +108,6 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		retval = -EFAULT;
 		goto out;
 	}
-	retval = n; // Set retval based on the number of chars read
 out:
 	kfree(ret_str); // Safe to kfree NULL
 	up(&aesd_device.lock);// unlock aesd_dev
