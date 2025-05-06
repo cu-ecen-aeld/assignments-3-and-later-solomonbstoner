@@ -124,8 +124,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	down(&aesd_device.lock); // lock aesd_dev
 	// struct aesd_dev *ad = (struct aesd_dev *)filp->private_data;
 	// struct aesd_circular_buffer *cbuf = ad->cbuf;
-	struct aesd_buffer_entry *tmp_kbuf = &aesd_device.tmp_buf;
-    PDEBUG("write: kzallocating  %lld bytes", count + tmp_kbuf->size + 1);
+	struct aesd_buffer_entry *tmp_kbuf = &aesd_device.tmp_kbuf;
+    PDEBUG("write: kzallocating  %ld bytes", count + tmp_kbuf->size + 1);
 	char *kbuf = (char *) kzalloc(count + tmp_kbuf->size + 1, GFP_KERNEL); // tmp_kbuf->size != 0 if there is an existing temporary string. +1 for terminating null
 	if (kbuf == NULL)
 	{
@@ -144,7 +144,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 		retval = -EFAULT;
 		goto free_kbuf;
 	}
-    PDEBUG("write: String is now: %s", kbuf);
+    PDEBUG("write: string is now: %s", kbuf);
 	retval = count; // We successfully wrote count number of bytes
 	tmp_kbuf->buffptr = kbuf;
 	tmp_kbuf->size += count;
@@ -152,8 +152,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	if (is_term)
 	{
 		// If kbuf ends with '\n' add entry using aesd_circular_buffer_add_entry
-		aesd_circular_buffer_add_entry(&aesd_device.cbuf, &aesd_device.tmp_buf);
-		memset(&aesd_device.tmp_buf, 0, sizeof(struct aesd_buffer_entry)); // Clear memory after it has been copied over
+		aesd_circular_buffer_add_entry(&aesd_device.cbuf, tmp_kbuf);
+		memset(tmp_kbuf, 0, sizeof(struct aesd_buffer_entry)); // Clear memory after it has been copied over
 		goto out; // No need to clear kbuf
 	}
 	else
@@ -201,12 +201,12 @@ int aesd_init_module(void)
         printk(KERN_WARNING "Can't get major %d\n", aesd_major);
         return result;
     }
-    memset(&aesd_device,0,sizeof(struct aesd_dev)); // cbuf and tmp_buf are all cleared too
+    memset(&aesd_device,0,sizeof(struct aesd_dev)); // cbuf and tmp_kbuf are all cleared too
 	sema_init(&aesd_device.lock, 1); // init aesddev semaphore as a mutex
 	down(&aesd_device.lock);
 	aesd_device.cbuf.full = false;
-	aesd_device.tmp_buf.buffptr = NULL;
-	aesd_device.tmp_buf.size = 0;
+	aesd_device.tmp_kbuf.buffptr = NULL;
+	aesd_device.tmp_kbuf.size = 0;
 	up(&aesd_device.lock);
     result = aesd_setup_cdev(&aesd_device);
 
@@ -231,7 +231,7 @@ void aesd_cleanup_module(void)
 	{
 		kfree(ptr->buffptr); // Safe to free null ptr
 	}
-	kfree(aesd_device.tmp_buf.buffptr); // Safe to free null ptr
+	kfree(aesd_device.tmp_kbuf.buffptr); // Safe to free null ptr
 	up(&aesd_device.lock); // unlock aesddev lock
 	// TODO Is there a need to destroy the lock?
     unregister_chrdev_region(devno, 1);
