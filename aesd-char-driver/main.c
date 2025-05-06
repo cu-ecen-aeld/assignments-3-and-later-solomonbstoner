@@ -110,6 +110,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 out:
 	kfree(ret_str); // Safe to kfree NULL
 	up(&aesd_device.lock);// unlock aesd_dev
+    *f_pos += retval; // Update the position of the file
     return retval;
 }
 
