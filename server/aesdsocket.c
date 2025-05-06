@@ -16,7 +16,14 @@
 #include <time.h>
 
 #define PORT_NUM "9000"
-#define FILE_NAME "/var/tmp/aesdsocketdata"
+
+#define USE_AESD_CHAR_DEVICE 1
+
+#ifdef USE_AESD_CHAR_DEVICE
+		#define FILE_NAME "/var/tmp/aesdsocketdata"
+#else
+		#define FILE_NAME "/dev/aesdchar"
+#endif
 
 // copied SLIST_FOREACH_SAFE from BSD because I need it to remove elements. Glibc does not have this macro
 #define	SLIST_FOREACH_SAFE(var, head, field, tvar)			\
@@ -46,6 +53,7 @@ void *thread_func (void *); // declaration of the func that the thread will run
 
 bool is_terminated = false; // variable for main loop
 
+#ifndef USE_AESD_CHAR_DEVICE
 static void add_timestamp (union sigval sv)
 {
 	time_t t;
@@ -63,6 +71,7 @@ static void add_timestamp (union sigval sv)
 	(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
 	pthread_mutex_unlock(&fd_m);
 }
+#endif
 
 // Func registered to run when pthread_cancel is called, and when the thread terminates
 static void thread_cleanup (void *arg)
@@ -79,7 +88,9 @@ void term_sig_handl (int signum)
 	// Is this handler reentrant? Is it signal safe?
 	close(fd); // close FILE_NAME. signal safe
 	close(sfd); // close the server socket to unblock `accept` in `main`. signal safe
+#ifndef USE_AESD_CHAR_DEVICE
 	unlink(FILE_NAME); // delete the file. signal safe
+#endif
 	struct node *n_tmp = NULL;
 	struct node *n_tmp_2 = NULL; // n_tmp_2 is purely for SLIST_FOREACH_SAFE
 	SLIST_FOREACH_SAFE(n_tmp, &head, next, n_tmp_2) // to close the fds of all threads
@@ -167,6 +178,7 @@ int main (int argc, char **argv)
 		// Child process continues to the while loop
 	}
 
+#ifndef USE_AESD_CHAR_DEVICE
 	// Initialize the timer after fork
 	struct sigevent sev;
 	struct itimerspec its;
@@ -188,6 +200,7 @@ int main (int argc, char **argv)
 	{
 		syslog(LOG_USER | LOG_ERR, "Failure to set timer: %s", strerror(errno));
 	}
+#endif
 
 	fd = open(FILE_NAME, O_APPEND | O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
 	pthread_mutex_init(&fd_m, NULL);
@@ -248,8 +261,10 @@ int main (int argc, char **argv)
 			SLIST_INSERT_AFTER(n_tmp_prev, n_new, next); // Not first entry
 		pthread_mutex_unlock(&n_new->ll_m); // unlock mutex for the new thread to do its work
 	}
+#ifndef USE_AESD_CHAR_DEVICE
 	if (timer_delete(timerid) != 0) // delete the timer
 		syslog(LOG_USER | LOG_ERR, "Error deleting timer: %s", strerror(errno));
+#endif
 	syslog(LOG_USER | LOG_NOTICE, "Caught signal, exiting");
 	struct node *n = NULL;
 	struct node *n_2 = NULL;
