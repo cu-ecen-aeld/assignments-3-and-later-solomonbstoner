@@ -79,21 +79,20 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 	struct aesd_buffer_entry *ent = aesd_circular_buffer_find_entry_offset_for_fpos(cbuf, *(f_pos), &j);
 	if (ent == NULL)
 	{
-		// Throw illegal seek error
-		retval = -ESPIPE;
+		retval = 0;
 		goto out;
 	}
 	size_t n = ent->size;
 	size_t n_b_to_cpy = count > n ? n : count; // Copy partial if count < total length of this entry's string
 	memcpy(ret_str, ent->buffptr+j, n_b_to_cpy);
 	i += n_b_to_cpy;
+    retval = i;
 	while (i < count)
    	{
 		ent = aesd_circular_buffer_find_entry_offset_for_fpos(cbuf, *(f_pos)+i, &j);
 		if (ent == NULL)
 		{
-			// Throw illegal seek error
-			retval = -ESPIPE;
+            // Nothing else to copy.
 			goto out;
 		}
 		n = ent->size;
@@ -124,6 +123,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	// struct aesd_dev *ad = (struct aesd_dev *)filp->private_data;
 	// struct aesd_circular_buffer *cbuf = ad->cbuf;
 	struct aesd_buffer_entry *tmp_kbuf = &aesd_device.tmp_buf;
+    PDEBUG("write: kzallocating  %lld bytes", count + tmp_kbuf->size + 1);
 	char *kbuf = (char *) kzalloc(count + tmp_kbuf->size + 1, GFP_KERNEL); // tmp_kbuf->size != 0 if there is an existing temporary string. +1 for terminating null
 	if (kbuf == NULL)
 	{
@@ -142,6 +142,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 		retval = -EFAULT;
 		goto free_kbuf;
 	}
+    PDEBUG("write: String is now: %s", kbuf);
+	retval = count; // We successfully wrote count number of bytes
 	tmp_kbuf->buffptr = kbuf;
 	tmp_kbuf->size += count;
 	bool is_term = (kbuf[count-1] == '\n');
