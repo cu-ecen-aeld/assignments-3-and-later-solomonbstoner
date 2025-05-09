@@ -281,6 +281,13 @@ int main (int argc, char **argv)
 	freeaddrinfo(skaddr_ptr);
 }
 
+bool iotctl_handler (unsigned int write_cmd, unsigned int write_cmd_offset)
+{
+	// TODO implement call to ioctl
+	// TODO use syslog? in caller?
+	return true;
+}
+
 void *thread_func (void *arg) 
 {
 	pthread_cleanup_push(thread_cleanup, arg);
@@ -300,6 +307,7 @@ void *thread_func (void *arg)
 		if (c == '\n')
 			break; // end of packet received
 	}
+	// TODO: implement check for "AESDCHAR_IOCSEEKTO:X,Y" and call iotctl_handler
 	pthread_mutex_lock(&fd_m);
 	ssize_t write_ret_val = write(fd, buf, strlen(buf)); // ignore failure to write
 	(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
