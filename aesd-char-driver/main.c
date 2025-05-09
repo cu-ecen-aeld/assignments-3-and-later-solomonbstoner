@@ -33,6 +33,9 @@ ssize_t aesd_write(struct file *, const char __user *, size_t, loff_t *);
 int aesd_init_module(void);
 void aesd_cleanup_module(void);
 int aesd_release(struct inode *, struct file *);
+loff_t aesd_llseek (struct file *filp, loff_t offset, int whence);
+long aesd_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long arg);
+static long aesd_adjust_file_offset(struct file *filp, unsigned int write_cmd, unsigned int write_cmd_offset);
 
 struct aesd_dev aesd_device; // TODO: Qn: why is this global?
 
@@ -168,12 +171,41 @@ out:
 	up(&aesd_device.lock); // unlock aesd_dev
     return retval;
 }
+
+loff_t aesd_llseek (struct file *filp, loff_t offset, int whence)
+{
+    // TODO
+    return 0;
+}
+
+long aesd_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long arg)
+{
+    // TODO: handle ioctl and call aesd_adjust_file_offset
+    return 0;
+}
+
+/**
+ * Adjust the file offset (f_pos) parameter of @param filp based on the location specified by
+ * @param write_cmd (the zero referenced command to locate)
+ * and @param write_cmd_offset (the zero referenced offset into the command)
+ * @return 0 if successful, negative if error occurred
+ *  -ERESTARTSYS if mutex could not be obtained
+ *  -EINVAL if write command or write_cmd_offset was out of range
+ */
+static long aesd_adjust_file_offset(struct file *filp, unsigned int write_cmd, unsigned int write_cmd_offset)
+{
+    // TODO
+    return 0;
+}
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek = aesd_llseek,
+    .unlocked_ioctl = aesd_unlocked_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
