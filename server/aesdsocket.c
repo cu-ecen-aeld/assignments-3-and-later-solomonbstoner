@@ -317,6 +317,6 @@ void *thread_func (void *arg)
 
 	syslog(LOG_USER | LOG_INFO, "Closed connection from %s", n->ip_a);
 
-	pthread_cleanup_pop(1); // pop and execute thread_cleanup
+	pthread_cleanup_pop(1); // pop and execute thread_cleanup. (n->ll_m is unlocked by thread_cleanup)
 	return NULL; // to shut the compiler up about void*
 }
