@@ -40,6 +40,7 @@ struct node
 	pthread_mutex_t ll_m; // mutex for this element
 	pthread_t t_id; // thread id of this particular thread
 	char ip_a[INET_ADDRSTRLEN]; // store the IPv4 addr of the connected client in string representation
+	char *buf; // buffer to hold on to client input
 	int sock_fd; // client socket file descriptor
 	bool is_completed; // true when the thread is ready to be terminated
 	SLIST_ENTRY(node) next; // macro for the next element in the linked list
@@ -80,6 +81,9 @@ static void add_timestamp (union sigval sv)
 static void thread_cleanup (void *arg)
 {
 	struct node *n = (struct node *) arg; // to shut the compiler up about incompatible arg type
+	close(fd);
+	pthread_mutex_unlock(&fd_m);
+	free(n->buf);
 	close(n->sock_fd);
 	n->is_completed = true;
 	n->sock_fd = -1;
@@ -286,12 +290,10 @@ int main (int argc, char **argv)
 void ioctl_handler (unsigned int write_cmd, unsigned int write_cmd_offset)
 {
 	struct aesd_seekto s = {.write_cmd = write_cmd, .write_cmd_offset = write_cmd_offset};	
-	pthread_mutex_lock(&fd_m);
 	if (ioctl(fd, _IOWR(AESD_IOC_MAGIC, 1, struct aesd_seekto), &s) < 0)
 	{
 		syslog(LOG_USER | LOG_ERR, "iotctl_hander failed to lseek via ioctl: %s", strerror(errno));
 	}
-	pthread_mutex_unlock(&fd_m);
 	return;
 }
 
@@ -303,8 +305,8 @@ void *thread_func (void *arg)
 	pthread_mutex_lock(&n->ll_m); // Lock node mutex
 	// Receive data from the conn, and append it to file `/var/tmp/aesdsocketdata`. Discard over-length packets (ie if malloc fails)
 
-	char *buf = (char *)malloc(200); // arbitrary 200 byte buffer
-	memset(buf, 0, 200);
+	n->buf = (char *)malloc(200); // arbitrary 200 byte buffer
+	memset(n->buf, 0, 200);
 	size_t len = 0;
 	char c;
 
@@ -318,12 +320,12 @@ void *thread_func (void *arg)
 
 	while (recv(n->sock_fd, &c, 1, 0) == 1 && len < 200)
 	{
-		*(buf+len) = c; // copy to buffer
+		*(n->buf+len) = c; // copy to buffer
 		len++;
 		if (c == '\n')
 			break; // end of packet received
 	}
-	char *cmd_str = strtok(buf, ":");
+	char *cmd_str = strtok(n->buf, ":");
 	if (cmd_str != NULL && strstr(cmd_str, "AESDCHAR_IOCSEEKTO"))
 	{
 		// IOCTL string "AESDCHAR_IOCSEEKTO:X,Y" received. Send ioctl and not write it to file
@@ -334,11 +336,10 @@ void *thread_func (void *arg)
 	}
 	else
 	{
-		ssize_t write_ret_val = write(fd, buf, strlen(buf)); // ignore failure to write
+		ssize_t write_ret_val = write(fd, n->buf, strlen(n->buf)); // ignore failure to write
 		(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
 		lseek(fd, SEEK_SET, 0); // start at the front of the file (for the read)
 	}
-	free(buf);
 	while(read(fd, &c, 1) == 1)
 	{
 		// Return the FULL content of `/var/tmp/aesdsocketdata` to the client as soon as a new packet is received (delimited by '\n')
@@ -347,8 +348,6 @@ void *thread_func (void *arg)
 	syslog(LOG_USER | LOG_INFO, "Closed connection from %s", n->ip_a);
 
 out:
-	close(fd);
-	pthread_mutex_unlock(&fd_m);
 	pthread_cleanup_pop(1); // pop and execute thread_cleanup. (n->ll_m is unlocked by thread_cleanup)
 	return NULL; // to shut the compiler up about void*
 }
