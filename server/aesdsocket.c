@@ -205,15 +205,7 @@ int main (int argc, char **argv)
 	}
 #endif
 
-	fd = open(FILE_NAME, O_APPEND | O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
 	pthread_mutex_init(&fd_m, NULL);
-	if (fd == -1)
-	{
-		freeaddrinfo(skaddr_ptr);
-		syslog(LOG_USER | LOG_ERR, "Failure to open file %s. Error: %s", FILE_NAME, strerror(errno));
-		exit(1);
-	}
-
 	syslog(LOG_USER | LOG_INFO, "Setup successful");
 
 	// Continuously listen for conn until SIGINT / SIGTERM is received. Then log "Caught signal, exiting" and "Closed connection from X.X.X.X" when SIGINT / SIGTERM is received
@@ -315,6 +307,15 @@ void *thread_func (void *arg)
 	memset(buf, 0, 200);
 	size_t len = 0;
 	char c;
+
+	pthread_mutex_lock(&fd_m);
+	fd = open(FILE_NAME, O_APPEND | O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+	if (fd == -1)
+	{
+		syslog(LOG_USER | LOG_ERR, "Failure to open file %s: %s", FILE_NAME, strerror(errno));
+		goto out;
+	}
+
 	while (recv(n->sock_fd, &c, 1, 0) == 1 && len < 200)
 	{
 		*(buf+len) = c; // copy to buffer
@@ -333,24 +334,21 @@ void *thread_func (void *arg)
 	}
 	else
 	{
-		pthread_mutex_lock(&fd_m);
 		ssize_t write_ret_val = write(fd, buf, strlen(buf)); // ignore failure to write
 		(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
 		lseek(fd, SEEK_SET, 0); // start at the front of the file (for the read)
-		pthread_mutex_unlock(&fd_m);
-
 	}
 	free(buf);
-	pthread_mutex_lock(&fd_m);
 	while(read(fd, &c, 1) == 1)
 	{
 		// Return the FULL content of `/var/tmp/aesdsocketdata` to the client as soon as a new packet is received (delimited by '\n')
 		send(n->sock_fd, &c, 1, 0);
 	}
-	pthread_mutex_unlock(&fd_m);
-
 	syslog(LOG_USER | LOG_INFO, "Closed connection from %s", n->ip_a);
 
+out:
+	close(fd);
+	pthread_mutex_unlock(&fd_m);
 	pthread_cleanup_pop(1); // pop and execute thread_cleanup. (n->ll_m is unlocked by thread_cleanup)
 	return NULL; // to shut the compiler up about void*
 }
