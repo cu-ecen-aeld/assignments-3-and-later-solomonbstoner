@@ -253,7 +253,7 @@ static loff_t aesd_adjust_file_offset(struct file *filp, size_t write_cmd, size_
 	PDEBUG("aesd_adjust_file_offset called with write_cmd=%ld and write_cmd_offset=%ld", write_cmd, write_cmd_offset);
 	down(&aesd_device.lock);
 	struct aesd_circular_buffer *cbuf = &aesd_device.cbuf;
-	if (cbuf->entry[write_cmd].size > write_cmd_offset)
+	if (cbuf->entry[write_cmd].size < write_cmd_offset)
 	{
 		// write_cmd_offset exceeds the number of bytes in entry[write_cmd] of the circ buf
 		PDEBUG("aesd_adjust_file_offset write_cmd_offset=%ld exceeds str len at entry=%ld", write_cmd_offset, cbuf->entry[write_cmd].size);
