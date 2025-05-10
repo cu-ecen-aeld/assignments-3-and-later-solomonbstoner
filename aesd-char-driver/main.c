@@ -256,6 +256,7 @@ static loff_t aesd_adjust_file_offset(struct file *filp, size_t write_cmd, size_
 	if (cbuf->entry[write_cmd].size > write_cmd_offset)
 	{
 		// write_cmd_offset exceeds the number of bytes in entry[write_cmd] of the circ buf
+		PDEBUG("aesd_adjust_file_offset write_cmd_offset=%ld exceeds str len at entry=%ld", write_cmd_offset, cbuf->entry[write_cmd].size);
 		ret_val = -EINVAL;
 		goto out;
 	}
@@ -277,6 +278,7 @@ static loff_t aesd_adjust_file_offset(struct file *filp, size_t write_cmd, size_
 	// Either way, entry is null and cant be used
 	if (i < write_cmd)
 	{
+		PDEBUG("aesd_adjust_file_offset write_cmd=%ld exceeds total number of entries = %ld", write_cmd, i);
 		ret_val = -EINVAL;
 		goto out;
 	}
