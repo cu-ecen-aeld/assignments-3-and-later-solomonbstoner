@@ -331,11 +331,14 @@ void *thread_func (void *arg)
 		syslog( LOG_USER | LOG_NOTICE, "AESDCHAR_IOCSEEKTO received. Calling handler with write_cmd=%u, write_cmd_offset=%u", write_cmd, write_cmd_offset);
 		ioctl_handler(write_cmd, write_cmd_offset);
 	}
-	// TODO: implement check for "AESDCHAR_IOCSEEKTO:X,Y" and call iotctl_handler
-	pthread_mutex_lock(&fd_m);
-	ssize_t write_ret_val = write(fd, buf, strlen(buf)); // ignore failure to write
-	(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
-	pthread_mutex_unlock(&fd_m);
+	else
+	{
+		pthread_mutex_lock(&fd_m);
+		ssize_t write_ret_val = write(fd, buf, strlen(buf)); // ignore failure to write
+		(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
+		pthread_mutex_unlock(&fd_m);
+
+	}
 	free(buf);
 
 	pthread_mutex_lock(&fd_m);
