@@ -213,12 +213,19 @@ long aesd_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long arg
 	{
 		case AESDCHAR_IOCSEEKTO:
 			PDEBUG("ioctl runs cmd AESDCHAR_IOCSEEKTO");
-			struct aesd_seekto *k_arg = NULL;
+			struct aesd_seekto *k_arg = (struct aesd_seekto *) kmalloc(sizeof(struct aesd_seekto), GFP_KERNEL);
+			if (k_arg == NULL)
+			{
+				ret_val = -EFAULT;
+				goto out;
+			}
 			if(copy_from_user(k_arg, usr_arg, sizeof(struct aesd_seekto)) != 0)
 			{
 				// handle failed copy
 				PDEBUG("ioctl copy_from_user error");
 				ret_val = -EFAULT;
+				kfree(k_arg);
+				goto out;
 			}
 			ret_val = aesd_adjust_file_offset(filp, k_arg->write_cmd, k_arg->write_cmd_offset);
 			break;
