@@ -336,13 +336,12 @@ void *thread_func (void *arg)
 		pthread_mutex_lock(&fd_m);
 		ssize_t write_ret_val = write(fd, buf, strlen(buf)); // ignore failure to write
 		(void) write_ret_val; // Explicitly ignore returned value to get rid of the "-Werror=unused-result" error
+		lseek(fd, SEEK_SET, 0); // start at the front of the file (for the read)
 		pthread_mutex_unlock(&fd_m);
 
 	}
 	free(buf);
-
 	pthread_mutex_lock(&fd_m);
-	lseek(fd, SEEK_SET, 0); // start at the front of the file
 	while(read(fd, &c, 1) == 1)
 	{
 		// Return the FULL content of `/var/tmp/aesdsocketdata` to the client as soon as a new packet is received (delimited by '\n')
