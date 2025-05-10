@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <sys/syslog.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <syslog.h>
@@ -14,6 +15,8 @@
 #include <sys/queue.h> // For the linked list
 #include <pthread.h>
 #include <time.h>
+
+#include "../aesd-char-driver/aesd_ioctl.h" // For ioctl
 
 #define PORT_NUM "9000"
 
@@ -281,11 +284,23 @@ int main (int argc, char **argv)
 	freeaddrinfo(skaddr_ptr);
 }
 
-bool iotctl_handler (unsigned int write_cmd, unsigned int write_cmd_offset)
+/**
+ * ioctl_handler calls the ioctl syscall when "AESDCHAR_IOCSEEKTO" is received over a socket
+ *
+ * The offset is the @param write_cmd_offset -th byte in the @param write_cmd -th entry in the circular buffer
+ *
+ * @return void
+ */
+void ioctl_handler (unsigned int write_cmd, unsigned int write_cmd_offset)
 {
-	// TODO implement call to ioctl
-	// TODO use syslog? in caller?
-	return true;
+	struct aesd_seekto s = {.write_cmd = write_cmd, .write_cmd_offset = write_cmd_offset};	
+	pthread_mutex_lock(&fd_m);
+	if (ioctl(fd, _IOWR(AESD_IOC_MAGIC, 1, struct aesd_seekto), &s) < 0)
+	{
+		syslog(LOG_USER | LOG_ERR, "iotctl_hander failed to lseek via ioctl: %s", strerror(errno));
+	}
+	pthread_mutex_unlock(&fd_m);
+	return;
 }
 
 void *thread_func (void *arg) 
@@ -306,6 +321,15 @@ void *thread_func (void *arg)
 		len++;
 		if (c == '\n')
 			break; // end of packet received
+	}
+	char *cmd_str = strtok(buf, ":");
+	if (cmd_str != NULL && strstr(cmd_str, "AESDCHAR_IOCSEEKTO"))
+	{
+		// IOCTL string "AESDCHAR_IOCSEEKTO:X,Y" received. Send ioctl and not write it to file
+		unsigned int write_cmd = atoi(strtok(NULL,","));
+		unsigned int write_cmd_offset = atoi(strtok(NULL,"\n"));
+		syslog( LOG_USER | LOG_NOTICE, "AESDCHAR_IOCSEEKTO received. Calling handler with write_cmd=%u, write_cmd_offset=%u", write_cmd, write_cmd_offset);
+		ioctl_handler(write_cmd, write_cmd_offset);
 	}
 	// TODO: implement check for "AESDCHAR_IOCSEEKTO:X,Y" and call iotctl_handler
 	pthread_mutex_lock(&fd_m);
