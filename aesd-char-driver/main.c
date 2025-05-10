@@ -228,6 +228,7 @@ long aesd_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long arg
 				goto out;
 			}
 			ret_val = aesd_adjust_file_offset(filp, k_arg->write_cmd, k_arg->write_cmd_offset);
+			kfree(k_arg);
 			break;
 		default: 
 			PDEBUG("ioctl invalid command %u", cmd);
@@ -260,19 +261,24 @@ static loff_t aesd_adjust_file_offset(struct file *filp, size_t write_cmd, size_
 	}
 	loff_t abs_offset = write_cmd_offset;
 	loff_t total_size = 0;
-	uint8_t i = 0;
+	size_t i = 0;
 	struct aesd_buffer_entry *entry = NULL;
 	AESD_CIRCULAR_BUFFER_FOREACH(entry, cbuf, i)
 	{
 		if (entry == NULL)
-		{
-			// write_cmd exceeds number of avail entries in the circ buf
-			ret_val = -EINVAL;
-			goto out;
-		}
+			break;
 		total_size += entry->size;
 		if (i < write_cmd)
 			abs_offset += entry->size;
+	}
+	// Exit condition from the loop is that
+	// 1. i == MAX_SIZE of the circ buffer cause its full
+	// 2. i < MAX_SIZE because the circ buffer isnt full
+	// Either way, entry is null and cant be used
+	if (i < write_cmd)
+	{
+		ret_val = -EINVAL;
+		goto out;
 	}
 	PDEBUG("aesd_adjust_file_offset calc abs offset = %lld", abs_offset);
 	up(&aesd_device.lock);
