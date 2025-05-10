@@ -170,6 +170,7 @@ free_kbuf:
 	kfree(kbuf);
 out:
 	up(&aesd_device.lock); // unlock aesd_dev
+	*f_pos += retval; // Update writer fpos
 	return retval;
 }
 
