@@ -22,7 +22,7 @@
 
 #define USE_AESD_CHAR_DEVICE 1
 
-#ifdef USE_AESD_CHAR_DEVICE
+#ifndef USE_AESD_CHAR_DEVICE
 		#define FILE_NAME "/var/tmp/aesdsocketdata"
 #else
 		#define FILE_NAME "/dev/aesdchar"
